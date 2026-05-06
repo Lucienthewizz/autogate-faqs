@@ -586,8 +586,14 @@ document.addEventListener('DOMContentLoaded', function() {
   updateActiveNav();
 
   // ---- Reveal on scroll — Intersection Observer ----
-  if ('IntersectionObserver' in window) {
-    var observerOptions = { threshold: 0.1, rootMargin: '0px 0px -50px 0px' };
+  var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+  if ('IntersectionObserver' in window && !prefersReducedMotion) {
+    // Lower threshold on mobile so elements trigger earlier (less scroll needed)
+    var revealThreshold = isMobile ? 0.05 : 0.1;
+    var revealMargin = isMobile ? '0px 0px -20px 0px' : '0px 0px -50px 0px';
+    var observerOptions = { threshold: revealThreshold, rootMargin: revealMargin };
 
     var revealObserver = new IntersectionObserver(function(entries) {
       entries.forEach(function(entry) {
@@ -598,11 +604,32 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     }, observerOptions);
 
+    // Group elements by their closest section so stagger resets per-section
+    // This prevents massive accumulated delays for elements deep in the page
     var revealEls = document.querySelectorAll('.card, .step-card, .faq-card, .doc-item, .accordion-item, .elig-card-primary, .elig-card-sec, .elig-card-full');
-    revealEls.forEach(function(el, i) {
+    var stepMs = isMobile ? 50 : 70; // shorter stagger on mobile
+    var maxDelayMs = isMobile ? 200 : 280; // cap so last items don't wait too long
+
+    // Track index per section
+    var sectionCounters = new Map();
+
+    revealEls.forEach(function(el) {
       el.classList.add('reveal-element');
-      el.style.transitionDelay = (i * 0.06) + 's';
+
+      // Find closest section ancestor to group stagger
+      var section = el.closest('section') || document.body;
+      var idx = sectionCounters.get(section) || 0;
+      sectionCounters.set(section, idx + 1);
+
+      var delayMs = Math.min(idx * stepMs, maxDelayMs);
+      el.style.transitionDelay = (delayMs / 1000).toFixed(2) + 's';
+
       revealObserver.observe(el);
+    });
+  } else {
+    // Reduced motion or no IntersectionObserver: show everything immediately
+    document.querySelectorAll('.card, .step-card, .faq-card, .doc-item, .accordion-item, .elig-card-primary, .elig-card-sec, .elig-card-full').forEach(function(el) {
+      el.classList.add('reveal-element', 'revealed');
     });
   }
 
